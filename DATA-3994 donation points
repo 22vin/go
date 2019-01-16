@@ -1,0 +1,37 @@
+
+create table points_bal as
+select a.userid,nvl(a.pta-b.ptr,0) bal
+from
+(select userid,sum(points)pta from stg_webdb..papointsadded  where date(activitydt) <= '2018-12-10' group by 1) a
+left join 
+(select userid,sum(points)ptr from stg_webdb..papointsremoved where activitytypeid in (2,3) and date(activitydt) <= '2018-12-10' group by 1) b
+on a.USERID = b.userid
+distribute on random
+
+
+select
+	date(a.ACTIVITYDT) dt,
+	--date_trunc('month',c.ACTIVITYDT) cohort_dt, 
+	--d.pointstype,
+	(case when f.DESCRIPTION is null then 'DINING' else f.DESCRIPTION end) EXCHNGTYPE,
+	sum(b.POINTSUSED) redeemed_pts,
+	count(distinct a.pointsremovedid),
+	count(distinct case when /*pb.bal>0 and*/ a.points <=100 then a.pointsremovedid else null end) "'0-100'",
+	count(distinct case when /*pb.bal>0 and*/ a.points >100 and a.points <= 500 then a.pointsremovedid else null end) "'100-500'",
+	count(distinct case when /*pb.bal>0 and*/ and a.points >500 and a.points <=1000 then a.pointsremovedid else null end) "'500-1000'",
+	count(distinct case when /*pb.bal>0 and*/ and a.points >1000 and a.points <=2000 then a.pointsremovedid else null end) "'1000-2000'",
+	count(distinct case when /*pb.bal>0 and*/ and a.points >2000  then a.pointsremovedid else null end) "'2000+'",
+	count(distinct case when pb.bal<=0  then a.pointsremovedid else null end) "'all_points'"
+	
+from 
+	STG_WEBDB.ADMIN.PAPOINTSREMOVED a 
+	join STG_WEBDB.ADMIN.PAPOINTSMAP b on a.POINTSREMOVEDID = b.POINTSREMOVEDID 
+	join STG_WEBDB.ADMIN.PAPOINTSADDED c on b.POINTSADDEDID = c.POINTSADDEDID
+	join STG_WEBDB.ADMIN.PAPOINTSTYPE d on c.POINTSTYPEID = d.POINTSTYPEID
+	left join STG_WEBDB.ADMIN.POINTSEXCHANGE e on a.giftredemptionid = e.giftredemptionid
+	left join STG_WEBDB.ADMIN.POINTSEXCHANGETYPE f on e.POINTSEXCHANGETYPEID = f.POINTSEXCHANGETYPEID
+	join dag_db..points_bal pb on a.userid = pb.userid
+
+where 
+	a.ACTIVITYTYPEID = 2 and f.dESCRIPTION = 'Donation' and date(a.ACTIVITYDT) between '2018-11-27' and '2018-12-10'
+group by 1,2
